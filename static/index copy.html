@@ -187,54 +187,54 @@
             color: #aaa;
         }
 
-        /* Touch Control Zones */
-        .touch-zone {
+        /* Mobile Controls */
+        #mobile-controls {
+            display: none;
             position: fixed;
-            background: transparent;
-            z-index: 999;
-            opacity: 0;
-            transition: opacity 0.2s;
-            pointer-events: auto;
+            bottom: 2rem;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 1000;
         }
 
-        .touch-zone.active {
-            opacity: 0.15;
-            background: rgba(102, 126, 234, 0.3);
+        #joystick-container {
+            width: 140px;
+            height: 140px;
+            background: rgba(26, 26, 26, 0.8);
+            border: 2px solid #444;
+            border-radius: 50%;
+            position: relative;
+            touch-action: none;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
         }
 
-        #touch-left {
-            left: 0;
-            top: 0;
-            width: 25%;
-            height: 100%;
+        #joystick-knob {
+            width: 60px;
+            height: 60px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: 3px solid #888;
+            border-radius: 50%;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            transition: all 0.1s ease;
+            box-shadow: 0 2px 10px rgba(102, 126, 234, 0.5);
         }
 
-        #touch-right {
-            right: 0;
-            top: 0;
-            width: 25%;
-            height: 100%;
+        #joystick-knob.active {
+            background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.8);
         }
 
-        #touch-up {
-            left: 25%;
-            top: 0;
-            width: 50%;
-            height: 40%;
-        }
-
-        #touch-down {
-            left: 25%;
-            bottom: 0;
-            width: 50%;
-            height: 40%;
-        }
-
-        /* Show touch zones slightly on mobile */
+        /* Show mobile controls on touch devices */
         @media (hover: none) and (pointer: coarse) {
-            .touch-zone {
-                opacity: 0.03;
-                background: rgba(102, 126, 234, 0.2);
+            #mobile-controls {
+                display: block;
+            }
+            
+            #status-panel {
+                margin-bottom: 180px;
             }
         }
 
@@ -319,11 +319,12 @@
         created by <a href="https://pinkswantrade.com" target="_blank" rel="noopener noreferrer">artem @ pinkswantrade.com</a>
     </div>
 
-    <!-- Touch Control Zones -->
-    <div class="touch-zone" id="touch-left"></div>
-    <div class="touch-zone" id="touch-right"></div>
-    <div class="touch-zone" id="touch-up"></div>
-    <div class="touch-zone" id="touch-down"></div>
+    <!-- Mobile Controls -->
+    <div id="mobile-controls">
+        <div id="joystick-container">
+            <div id="joystick-knob"></div>
+        </div>
+    </div>
     
     <div id="game-container">
         <div id="title">Anti Anxiety Maze</div>
@@ -624,41 +625,119 @@
                     }
                 });
 
-                // Mobile touch zone controls
+                // Mobile joystick controls
                 this.setupMobileControls();
             }
 
             setupMobileControls() {
-                const zones = {
-                    left: document.getElementById('touch-left'),
-                    right: document.getElementById('touch-right'),
-                    up: document.getElementById('touch-up'),
-                    down: document.getElementById('touch-down')
+                const container = document.getElementById('joystick-container');
+                const knob = document.getElementById('joystick-knob');
+                
+                if (!container || !knob) return;
+
+                let touchId = null;
+                let centerX = 0;
+                let centerY = 0;
+                let maxDistance = 40; // Maximum distance knob can move from center
+                let moveThreshold = 15; // Distance needed to trigger movement
+
+                const updateKnobPosition = (x, y) => {
+                    const rect = container.getBoundingClientRect();
+                    centerX = rect.left + rect.width / 2;
+                    centerY = rect.top + rect.height / 2;
+
+                    const deltaX = x - centerX;
+                    const deltaY = y - centerY;
+                    const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+
+                    // Limit knob movement to maxDistance
+                    const limitedDistance = Math.min(distance, maxDistance);
+                    const angle = Math.atan2(deltaY, deltaX);
+                    
+                    const knobX = Math.cos(angle) * limitedDistance;
+                    const knobY = Math.sin(angle) * limitedDistance;
+
+                    knob.style.transform = `translate(calc(-50% + ${knobX}px), calc(-50% + ${knobY}px))`;
+
+                    // Determine direction if moved beyond threshold
+                    if (distance > moveThreshold && !this.isMoving) {
+                        const absX = Math.abs(deltaX);
+                        const absY = Math.abs(deltaY);
+
+                        let direction = null;
+                        
+                        if (absX > absY) {
+                            direction = deltaX > 0 ? 'right' : 'left';
+                        } else {
+                            direction = deltaY > 0 ? 'down' : 'up';
+                        }
+
+                        if (direction) {
+                            this.movePlayer(direction);
+                        }
+                    }
                 };
 
-                // Setup touch handler for each zone
-                Object.entries(zones).forEach(([direction, zone]) => {
-                    if (!zone) return;
+                const resetKnob = () => {
+                    knob.style.transform = 'translate(-50%, -50%)';
+                    knob.classList.remove('active');
+                    touchId = null;
+                };
 
-                    const handleTouch = (e) => {
-                        e.preventDefault();
-                        zone.classList.add('active');
-                        this.movePlayer(direction);
-                        
-                        // Remove active class after a short delay
-                        setTimeout(() => {
-                            zone.classList.remove('active');
-                        }, 150);
-                    };
+                // Touch events
+                container.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    if (touchId === null) {
+                        const touch = e.changedTouches[0];
+                        touchId = touch.identifier;
+                        knob.classList.add('active');
+                        updateKnobPosition(touch.clientX, touch.clientY);
+                    }
+                }, { passive: false });
 
-                    // Touch events
-                    zone.addEventListener('touchstart', handleTouch, { passive: false });
-                    
-                    // Click events for desktop testing
-                    zone.addEventListener('click', (e) => {
-                        e.preventDefault();
-                        handleTouch(e);
-                    });
+                container.addEventListener('touchmove', (e) => {
+                    e.preventDefault();
+                    for (let touch of e.changedTouches) {
+                        if (touch.identifier === touchId) {
+                            updateKnobPosition(touch.clientX, touch.clientY);
+                            break;
+                        }
+                    }
+                }, { passive: false });
+
+                const handleTouchEnd = (e) => {
+                    for (let touch of e.changedTouches) {
+                        if (touch.identifier === touchId) {
+                            resetKnob();
+                            break;
+                        }
+                    }
+                };
+
+                container.addEventListener('touchend', handleTouchEnd);
+                container.addEventListener('touchcancel', handleTouchEnd);
+
+                // Mouse events for testing on desktop
+                let isMouseDown = false;
+
+                container.addEventListener('mousedown', (e) => {
+                    e.preventDefault();
+                    isMouseDown = true;
+                    knob.classList.add('active');
+                    updateKnobPosition(e.clientX, e.clientY);
+                });
+
+                document.addEventListener('mousemove', (e) => {
+                    if (isMouseDown) {
+                        updateKnobPosition(e.clientX, e.clientY);
+                    }
+                });
+
+                document.addEventListener('mouseup', () => {
+                    if (isMouseDown) {
+                        isMouseDown = false;
+                        resetKnob();
+                    }
                 });
             }
 
@@ -666,17 +745,12 @@
                 if (this.isMoving) return;
                 this.isMoving = true;
 
-                const moved = this.player.move(direction, this.maze);
+                this.player.move(direction, this.maze);
                 
-                if (moved) {
-                    // Immediately render after movement
-                    this.render();
-                }
+                // Immediately render after movement
+                this.render();
                 
-                // Reset moving flag after a short delay
-                setTimeout(() => {
-                    this.isMoving = false;
-                }, 150);
+                this.isMoving = false;
             }
 
             updateGameState() {
