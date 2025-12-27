@@ -1,64 +1,59 @@
-from flask import Flask, jsonify, request, send_from_directory
-import time
+from flask import Flask, jsonify, send_from_directory
 import random
 import os
-from app_config import CONFIG
-from breathing_state import BreathingState
-from maze import Maze
-from player_class import Player
 
 app = Flask(__name__, static_folder='static')
 
-class GameSession:
-    """Manages a complete game session."""
+
+class Maze:
+    """Manages maze generation only."""
     
-    def __init__(self, session_id):
-        self.session_id = session_id
-        self.maze = Maze(Maze.generate(CONFIG['MAZE_SIZE'], CONFIG['MAZE_SIZE']))
-        self.player = Player(50, 50)
-        self.breathing_state = BreathingState(session_id)
-        self.created_at = time.time()
-    
-    def get_state(self):
-        """Get complete game state."""
-        breathing_data = self.breathing_state.to_dict()
-        visible_cells = self.maze.render_visible_area(
-            self.player.row,
-            self.player.col,
-            breathing_data['current_radius']
-        )
+    @staticmethod
+    def generate(width, height):
+        """Generate a maze using recursive backtracking."""
+        maze = [['#' for _ in range(width)] for _ in range(height)]
         
-        return {
-            'session_id': self.session_id,
-            'player': self.player.to_dict(),
-            'breathing': breathing_data,
-            'visible_cells': visible_cells,
-            'maze_size': {
-                'width': self.maze.width,
-                'height': self.maze.height
-            }
-        }
-    
-    def handle_move(self, direction):
-        """Handle player movement."""
-        success = self.player.move(direction, self.maze)
-        return success
-
-
-# Store active sessions
-sessions = {}
-
-# Session timeout (30 minutes)
-SESSION_TIMEOUT = 1800
-
-
-def cleanup_old_sessions():
-    """Remove sessions older than timeout."""
-    current_time = time.time()
-    expired = [sid for sid, session in sessions.items() 
-               if current_time - session.created_at > SESSION_TIMEOUT]
-    for sid in expired:
-        del sessions[sid]
+        start_x, start_y = width // 2, height // 2
+        
+        stack = [(start_x, start_y)]
+        visited = set()
+        visited.add((start_x, start_y))
+        maze[start_y][start_x] = '.'
+        
+        directions = [(0, 2), (2, 0), (0, -2), (-2, 0)]
+        
+        while stack:
+            x, y = stack[-1]
+            
+            neighbors = []
+            for dx, dy in directions:
+                nx, ny = x + dx, y + dy
+                if 1 <= nx < width - 1 and 1 <= ny < height - 1:
+                    if (nx, ny) not in visited:
+                        neighbors.append((nx, ny, dx, dy))
+            
+            if neighbors:
+                nx, ny, dx, dy = random.choice(neighbors)
+                maze[y + dy // 2][x + dx // 2] = '.'
+                maze[ny][nx] = '.'
+                visited.add((nx, ny))
+                stack.append((nx, ny))
+            else:
+                stack.pop()
+        
+        # Add some rooms
+        for _ in range(20):
+            room_x = random.randint(5, width - 10)
+            room_y = random.randint(5, height - 10)
+            room_w = random.randint(3, 8)
+            room_h = random.randint(3, 8)
+            
+            for ry in range(room_y, min(room_y + room_h, height - 1)):
+                for rx in range(room_x, min(room_x + room_w, width - 1)):
+                    if 1 <= rx < width - 1 and 1 <= ry < height - 1:
+                        maze[ry][rx] = '.'
+        
+        return [''.join(row) for row in maze]
 
 
 @app.route('/')
@@ -73,55 +68,15 @@ def serve_static(path):
     return send_from_directory('static', path)
 
 
-@app.route('/api/session/create', methods=['POST'])
-def create_session():
-    """Create a new game session."""
-    cleanup_old_sessions()
-    
-    session_id = f"session_{int(time.time() * 1000)}_{random.randint(1000, 9999)}"
-    sessions[session_id] = GameSession(session_id)
-    
+@app.route('/api/maze/generate', methods=['POST'])
+def generate_maze():
+    """Generate a new maze."""
+    maze_layout = Maze.generate(100, 100)
     return jsonify({
-        'session_id': session_id,
-        'config': CONFIG
+        'maze': maze_layout,
+        'width': 100,
+        'height': 100
     })
-
-
-@app.route('/api/session/<session_id>/state', methods=['GET'])
-def get_state(session_id):
-    """Get current game state."""
-    if session_id not in sessions:
-        return jsonify({'error': 'Session not found'}), 404
-    
-    session = sessions[session_id]
-    return jsonify(session.get_state())
-
-
-@app.route('/api/session/<session_id>/move', methods=['POST'])
-def move_player(session_id):
-    """Move the player."""
-    if session_id not in sessions:
-        return jsonify({'error': 'Session not found'}), 404
-    
-    data = request.json
-    direction = data.get('direction')
-    
-    if direction not in ['up', 'down', 'left', 'right']:
-        return jsonify({'error': 'Invalid direction'}), 400
-    
-    session = sessions[session_id]
-    success = session.handle_move(direction)
-    
-    return jsonify({
-        'success': success,
-        'player': session.player.to_dict()
-    })
-
-
-@app.route('/api/config', methods=['GET'])
-def get_config():
-    """Get game configuration."""
-    return jsonify(CONFIG)
 
 
 @app.route('/api/health', methods=['GET'])
@@ -129,8 +84,7 @@ def health_check():
     """Health check endpoint."""
     return jsonify({
         'status': 'ok',
-        'active_sessions': len(sessions),
-        'timestamp': time.time()
+        'message': 'Breathing Meditation Server'
     })
 
 

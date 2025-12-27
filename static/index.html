@@ -265,71 +265,254 @@
     </div>
 
     <script>
+        // Configuration constants
+        const CONFIG = {
+            INHALE_TIME: 4.0,
+            HOLD_AFTER_INHALE: 2.0,
+            EXHALE_TIME: 6.0,
+            HOLD_AFTER_EXHALE: 2.0,
+            MIN_LIGHT_RADIUS: 5.0,
+            MAX_LIGHT_RADIUS: 20.0,
+            CELL_SIZE: 10,
+            MAZE_SIZE: 100
+        };
+
+        CONFIG.TOTAL_CYCLE = CONFIG.INHALE_TIME + CONFIG.HOLD_AFTER_INHALE + 
+                             CONFIG.EXHALE_TIME + CONFIG.HOLD_AFTER_EXHALE;
+
+        // Character sets
+        const FLOOR_CHARS = [' ', ' ', '·', '·', '·', '·', '·', '·'];
+        const FLOOR_COLORS = [
+            '#000000', '#000000', '#1a1a1a', '#333333',
+            '#4d4d4d', '#666666', '#999999', '#cccccc'
+        ];
+        const WALL_COLORS = [
+            '#000000', '#000000', '#1a1a1a', '#2d2d2d',
+            '#404040', '#5a5a5a', '#7a7a7a', '#aaaaaa'
+        ];
+
+        // Breathing State Manager (Frontend)
+        class BreathingState {
+            constructor() {
+                this.startTime = Date.now();
+            }
+
+            getElapsedTime() {
+                return (Date.now() - this.startTime) / 1000;
+            }
+
+            getBreathingPhase() {
+                const t = this.getElapsedTime();
+                const cycleTime = t % CONFIG.TOTAL_CYCLE;
+                
+                let phase, phaseTime, phaseDuration, phaseProgress;
+                
+                if (cycleTime < CONFIG.INHALE_TIME) {
+                    phase = "INHALE";
+                    phaseTime = cycleTime;
+                    phaseDuration = CONFIG.INHALE_TIME;
+                    phaseProgress = phaseTime / phaseDuration;
+                } else if (cycleTime < CONFIG.INHALE_TIME + CONFIG.HOLD_AFTER_INHALE) {
+                    phase = "HOLD";
+                    phaseTime = cycleTime - CONFIG.INHALE_TIME;
+                    phaseDuration = CONFIG.HOLD_AFTER_INHALE;
+                    phaseProgress = 1.0;
+                } else if (cycleTime < CONFIG.INHALE_TIME + CONFIG.HOLD_AFTER_INHALE + CONFIG.EXHALE_TIME) {
+                    phase = "EXHALE";
+                    phaseTime = cycleTime - CONFIG.INHALE_TIME - CONFIG.HOLD_AFTER_INHALE;
+                    phaseDuration = CONFIG.EXHALE_TIME;
+                    phaseProgress = 1.0 - (phaseTime / phaseDuration);
+                } else {
+                    phase = "HOLD";
+                    phaseTime = cycleTime - CONFIG.INHALE_TIME - CONFIG.HOLD_AFTER_INHALE - CONFIG.EXHALE_TIME;
+                    phaseDuration = CONFIG.HOLD_AFTER_EXHALE;
+                    phaseProgress = 0.0;
+                }
+                
+                return { phase, phaseTime, phaseDuration, phaseProgress };
+            }
+
+            getCurrentRadius() {
+                const { phaseProgress } = this.getBreathingPhase();
+                const smoothed = 0.5 - 0.5 * Math.cos(phaseProgress * Math.PI);
+                return CONFIG.MIN_LIGHT_RADIUS + (CONFIG.MAX_LIGHT_RADIUS - CONFIG.MIN_LIGHT_RADIUS) * smoothed;
+            }
+
+            getCycleNumber() {
+                return Math.floor(this.getElapsedTime() / CONFIG.TOTAL_CYCLE) + 1;
+            }
+        }
+
+        // Player class (Frontend)
+        class Player {
+            constructor(row, col) {
+                this.row = row;
+                this.col = col;
+            }
+
+            move(direction, maze) {
+                const directionMap = {
+                    'up': [-1, 0],
+                    'down': [1, 0],
+                    'left': [0, -1],
+                    'right': [0, 1]
+                };
+
+                const [dr, dc] = directionMap[direction];
+                const newRow = this.row + dr;
+                const newCol = this.col + dc;
+
+                if (newRow >= 0 && newRow < maze.height && 
+                    newCol >= 0 && newCol < maze.width) {
+                    if (maze.getCell(newRow, newCol) !== '#') {
+                        this.row = newRow;
+                        this.col = newCol;
+                        return true;
+                    }
+                }
+                return false;
+            }
+        }
+
+        // Maze class (Frontend - rendering only)
+        class Maze {
+            constructor(layout) {
+                this.layout = layout;
+                this.height = layout.length;
+                this.width = layout[0].length;
+            }
+
+            getCell(row, col) {
+                if (row >= 0 && row < this.height && col >= 0 && col < this.width) {
+                    return this.layout[row][col];
+                }
+                return '#';
+            }
+
+            static distanceEuclidean(r1, c1, r2, c2) {
+                return Math.sqrt((r1 - r2) ** 2 + (c1 - c2) ** 2);
+            }
+
+            getLightIntensity(playerRow, playerCol, row, col, currentRadius) {
+                const dist = Maze.distanceEuclidean(playerRow, playerCol, row, col);
+                
+                if (dist <= 1.0) return 1.0;
+                if (dist > currentRadius) return 0.0;
+                
+                let intensity = 1.0 - (dist / currentRadius);
+                intensity = Math.pow(intensity, 1.5);
+                
+                return Math.max(0.0, Math.min(1.0, intensity));
+            }
+
+            getVisibleCells(playerRow, playerCol, currentRadius) {
+                const visibleCells = [];
+                
+                const minRow = Math.max(0, Math.floor(playerRow - currentRadius - 2));
+                const maxRow = Math.min(this.height, Math.ceil(playerRow + currentRadius + 3));
+                const minCol = Math.max(0, Math.floor(playerCol - currentRadius - 2));
+                const maxCol = Math.min(this.width, Math.ceil(playerCol + currentRadius + 3));
+                
+                for (let r = minRow; r < maxRow; r++) {
+                    for (let c = minCol; c < maxCol; c++) {
+                        const intensity = this.getLightIntensity(playerRow, playerCol, r, c, currentRadius);
+                        
+                        if (intensity > 0) {
+                            const colorIndex = Math.min(7, Math.floor(intensity * 7));
+                            const cell = this.getCell(r, c);
+                            
+                            let cellType, char, color;
+                            
+                            if (r === playerRow && c === playerCol) {
+                                cellType = 'player';
+                                char = '@';
+                                color = null;
+                            } else if (cell === '#') {
+                                cellType = 'wall';
+                                char = '#';
+                                color = WALL_COLORS[colorIndex];
+                            } else {
+                                cellType = 'floor';
+                                char = FLOOR_CHARS[colorIndex];
+                                color = FLOOR_COLORS[colorIndex];
+                            }
+                            
+                            visibleCells.push({
+                                row: r,
+                                col: c,
+                                type: cellType,
+                                char: char,
+                                color: color,
+                                intensity: intensity
+                            });
+                        }
+                    }
+                }
+                
+                return visibleCells;
+            }
+        }
+
         class BreathingMeditationClient {
             constructor() {
                 this.sessionId = null;
-                this.config = null;
+                this.maze = null;
+                this.player = null;
+                this.breathing = null;
                 this.canvas = document.getElementById('maze-canvas');
                 this.ctx = this.canvas.getContext('2d');
                 this.isMoving = false;
                 this.updateInterval = null;
-                this.viewportCells = { width: 60, height: 60 }; // Default, will be calculated
+                this.viewportCells = { width: 60, height: 60 };
                 this.cameraOffset = { x: 0, y: 0 };
             }
 
             calculateViewportSize() {
-                // Calculate available space for canvas
                 const titleHeight = document.getElementById('title').offsetHeight;
                 const statusHeight = document.getElementById('status-panel').offsetHeight;
-                const gap = 32; // Approximate gap spacing
-                const padding = 32; // Body padding
+                const gap = 32;
+                const padding = 32;
                 
                 const availableHeight = window.innerHeight - titleHeight - statusHeight - gap - padding;
                 const availableWidth = window.innerWidth - padding;
                 
-                // Calculate how many cells fit in the viewport
-                const cellsWidth = Math.floor(availableWidth / this.config.CELL_SIZE);
-                const cellsHeight = Math.floor(availableHeight / this.config.CELL_SIZE);
+                const cellsWidth = Math.floor(availableWidth / CONFIG.CELL_SIZE);
+                const cellsHeight = Math.floor(availableHeight / CONFIG.CELL_SIZE);
                 
-                // Use smaller value and ensure it's reasonable (minimum 30, maximum 80)
                 const viewSize = Math.min(cellsWidth, cellsHeight);
                 this.viewportCells.width = Math.max(30, Math.min(80, viewSize));
                 this.viewportCells.height = Math.max(30, Math.min(80, viewSize));
                 
-                // Set canvas size
-                this.canvas.width = this.viewportCells.width * this.config.CELL_SIZE;
-                this.canvas.height = this.viewportCells.height * this.config.CELL_SIZE;
+                this.canvas.width = this.viewportCells.width * CONFIG.CELL_SIZE;
+                this.canvas.height = this.viewportCells.height * CONFIG.CELL_SIZE;
             }
 
             async init() {
                 try {
-                    // Create session
-                    const response = await fetch('/api/session/create', {
+                    // Fetch maze from backend
+                    const response = await fetch('/api/maze/generate', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' }
                     });
                     
-                    if (!response.ok) throw new Error('Failed to create session');
+                    if (!response.ok) throw new Error('Failed to generate maze');
                     
                     const data = await response.json();
-                    this.sessionId = data.session_id;
-                    this.config = data.config;
+                    
+                    // Initialize frontend components
+                    this.maze = new Maze(data.maze);
+                    this.player = new Player(50, 50);
+                    this.breathing = new BreathingState();
 
-                    // Calculate and setup canvas based on viewport
                     this.calculateViewportSize();
-
-                    // Setup keyboard controls
                     this.setupControls();
 
-                    // Handle window resize
                     window.addEventListener('resize', () => {
                         this.calculateViewportSize();
                     });
 
-                    // Start update loop
                     this.startUpdateLoop();
 
-                    // Show game
                     document.getElementById('loading').style.display = 'none';
                     document.getElementById('game-container').style.display = 'flex';
 
@@ -346,52 +529,33 @@
                     'd': 'right', 'D': 'right', 'ArrowRight': 'right'
                 };
 
-                document.addEventListener('keydown', async (e) => {
+                document.addEventListener('keydown', (e) => {
                     const direction = keyMap[e.key];
                     if (direction && !this.isMoving) {
                         e.preventDefault();
-                        await this.movePlayer(direction);
+                        this.movePlayer(direction);
                     }
                 });
             }
 
-            async movePlayer(direction) {
+            movePlayer(direction) {
                 if (this.isMoving) return;
                 this.isMoving = true;
 
-                try {
-                    const response = await fetch(`/api/session/${this.sessionId}/move`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ direction })
-                    });
-
-                    if (response.ok) {
-                        // Immediately update to show movement
-                        await this.updateGameState();
-                    }
-                } catch (error) {
-                    console.error('Move failed:', error);
-                } finally {
-                    this.isMoving = false;
-                }
+                this.player.move(direction, this.maze);
+                
+                // Immediately render after movement
+                this.render();
+                
+                this.isMoving = false;
             }
 
-            async updateGameState() {
-                try {
-                    const response = await fetch(`/api/session/${this.sessionId}/state`);
-                    if (!response.ok) throw new Error('Failed to get state');
-                    
-                    const state = await response.json();
-                    this.render(state);
-                    this.updateUI(state);
-                } catch (error) {
-                    console.error('Update failed:', error);
-                }
+            updateGameState() {
+                this.render();
+                this.updateUI();
             }
 
             calculateCameraOffset(playerRow, playerCol) {
-                // Center camera on player
                 const centerRow = Math.floor(this.viewportCells.height / 2);
                 const centerCol = Math.floor(this.viewportCells.width / 2);
                 
@@ -399,50 +563,54 @@
                 this.cameraOffset.y = playerRow - centerRow;
             }
 
-            render(state) {
-                const { visible_cells, player, breathing } = state;
-
-                // Calculate camera position
-                this.calculateCameraOffset(player.row, player.col);
+            render() {
+                const breathingData = this.breathing.getBreathingPhase();
+                const currentRadius = this.breathing.getCurrentRadius();
+                
+                this.calculateCameraOffset(this.player.row, this.player.col);
 
                 // Clear canvas
                 this.ctx.fillStyle = '#000000';
                 this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
                 // Set font
-                const fontSize = Math.floor(this.config.CELL_SIZE * 0.6);
+                const fontSize = Math.floor(CONFIG.CELL_SIZE * 0.6);
                 this.ctx.font = `bold ${fontSize}px "Courier New", monospace`;
                 this.ctx.textAlign = 'center';
                 this.ctx.textBaseline = 'middle';
 
-                // Render visible cells that are in viewport
-                for (const cell of visible_cells) {
-                    // Convert world coordinates to screen coordinates
+                // Get visible cells
+                const visibleCells = this.maze.getVisibleCells(
+                    this.player.row, 
+                    this.player.col, 
+                    currentRadius
+                );
+
+                // Render visible cells
+                for (const cell of visibleCells) {
                     const screenCol = cell.col - this.cameraOffset.x;
                     const screenRow = cell.row - this.cameraOffset.y;
                     
-                    // Skip if outside viewport
                     if (screenCol < 0 || screenCol >= this.viewportCells.width ||
                         screenRow < 0 || screenRow >= this.viewportCells.height) {
                         continue;
                     }
                     
-                    const x = screenCol * this.config.CELL_SIZE;
-                    const y = screenRow * this.config.CELL_SIZE;
+                    const x = screenCol * CONFIG.CELL_SIZE;
+                    const y = screenRow * CONFIG.CELL_SIZE;
 
                     if (cell.type === 'player') {
-                        // Render player with phase-based color
-                        const color = this.getPlayerColor(breathing.phase, breathing.phase_progress);
+                        const color = this.getPlayerColor(breathingData.phase, breathingData.phaseProgress);
                         this.ctx.fillStyle = color;
                         this.ctx.fillText('@', 
-                            x + this.config.CELL_SIZE / 2, 
-                            y + this.config.CELL_SIZE / 2
+                            x + CONFIG.CELL_SIZE / 2, 
+                            y + CONFIG.CELL_SIZE / 2
                         );
                     } else if (cell.char !== ' ') {
                         this.ctx.fillStyle = cell.color;
                         this.ctx.fillText(cell.char,
-                            x + this.config.CELL_SIZE / 2,
-                            y + this.config.CELL_SIZE / 2
+                            x + CONFIG.CELL_SIZE / 2,
+                            y + CONFIG.CELL_SIZE / 2
                         );
                     }
                 }
@@ -455,45 +623,44 @@
                     return `#${hex}${hex}ff`;
                 } else if (phase === 'HOLD') {
                     return '#ffff00';
-                } else { // EXHALE
+                } else {
                     const brightness = Math.floor(100 + 155 * (1.0 - progress));
                     const hex = brightness.toString(16).padStart(2, '0');
                     return `#0000${hex}`;
                 }
             }
 
-            updateUI(state) {
-                const { breathing } = state;
-                const phase = breathing.phase;
+            updateUI() {
+                const breathingData = this.breathing.getBreathingPhase();
+                const currentRadius = this.breathing.getCurrentRadius();
+                const cycleNumber = this.breathing.getCycleNumber();
+                
+                const phase = breathingData.phase;
 
-                // Update phase display
                 const phaseDisplay = document.getElementById('phase-display');
                 phaseDisplay.textContent = phase;
                 phaseDisplay.className = `phase-${phase}`;
 
-                // Update progress bar
                 const progressBar = document.getElementById('progress-bar');
-                const progress = (breathing.phase_time / breathing.phase_duration) * 100;
+                const progress = (breathingData.phaseTime / breathingData.phaseDuration) * 100;
                 progressBar.style.width = `${progress}%`;
                 progressBar.className = `bar-${phase}`;
 
-                // Update time remaining
-                const timeRemaining = breathing.phase_duration - breathing.phase_time;
+                const timeRemaining = breathingData.phaseDuration - breathingData.phaseTime;
                 document.getElementById('time-remaining').textContent = 
                     `${timeRemaining.toFixed(1)}s remaining`;
 
-                // Update stats
                 document.getElementById('radius-stat').textContent = 
-                    `Radius: ${breathing.current_radius.toFixed(1)}`;
+                    `Radius: ${currentRadius.toFixed(1)}`;
                 document.getElementById('cycle-stat').textContent = 
-                    `Cycle: ${breathing.cycle_number}`;
+                    `Cycle: ${cycleNumber}`;
             }
 
             startUpdateLoop() {
                 this.updateGameState();
                 this.updateInterval = setInterval(() => {
                     this.updateGameState();
-                }, 1000 / 30); // 30 FPS
+                }, 1000 / 30);
             }
 
             showError(message) {
