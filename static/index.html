@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Breathing Meditation</title>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Space Mono', monospace;
+            background: #000;
+            color: #fff;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            padding: 1rem;
+        }
+
+        #loading {
+            font-size: 1.5rem;
+            color: #00ffff;
+            text-align: center;
+            padding: 2rem;
+        }
+
+        #game-container {
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 0.75rem;
+            width: 100%;
+            height: 100vh;
+        }
+
+        #title {
+            font-size: clamp(1.2rem, 3vw, 2rem);
+            font-weight: 700;
+            color: #fff;
+            text-shadow: 0 0 20px rgba(255,255,255,0.3);
+            letter-spacing: 0.05em;
+            animation: glow 3s ease-in-out infinite;
+            flex-shrink: 0;
+        }
+
+        @keyframes glow {
+            0%, 100% { text-shadow: 0 0 20px rgba(255,255,255,0.3); }
+            50% { text-shadow: 0 0 30px rgba(255,255,255,0.5); }
+        }
+
+        #canvas-wrapper {
+            border: 2px solid #333;
+            box-shadow: 0 0 30px rgba(0,0,0,0.8);
+            flex-shrink: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+
+        #maze-canvas {
+            display: block;
+            background: #000;
+        }
+
+        #status-panel {
+            width: 100%;
+            max-width: 800px;
+            background: #0a0a0a;
+            border: 2px solid #333;
+            border-radius: 8px;
+            padding: 1rem;
+            box-shadow: 0 0 30px rgba(0,0,0,0.5);
+            flex-shrink: 0;
+        }
+
+        #phase-display {
+            font-size: clamp(1.2rem, 3vw, 1.5rem);
+            font-weight: 700;
+            text-align: center;
+            margin-bottom: 0.5rem;
+            transition: all 0.3s ease;
+        }
+
+        #progress-bar-container {
+            width: 100%;
+            height: 12px;
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 6px;
+            overflow: hidden;
+            margin-bottom: 0.5rem;
+            position: relative;
+        }
+
+        #progress-bar {
+            height: 100%;
+            transition: width 0.1s linear;
+            position: relative;
+        }
+
+        #time-remaining {
+            font-size: clamp(0.85rem, 2vw, 1rem);
+            text-align: center;
+            margin-bottom: 0.5rem;
+        }
+
+        #stats {
+            display: flex;
+            justify-content: space-around;
+            font-size: clamp(0.7rem, 1.5vw, 0.85rem);
+            color: #999;
+            margin-bottom: 0.5rem;
+        }
+
+        #instructions {
+            font-size: clamp(0.65rem, 1.5vw, 0.75rem);
+            color: #666;
+            text-align: center;
+        }
+
+        #support-button {
+            position: fixed;
+            top: 1rem;
+            right: 1rem;
+            padding: 0.7rem 1.5rem;
+            background: #FFEB3B;
+            color: #000;
+            text-decoration: none;
+            border-radius: 25px;
+            font-size: 0.9rem;
+            font-weight: 700;
+            transition: all 0.3s ease;
+            border: none;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(255, 235, 59, 0.4);
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+
+        #support-button:hover {
+            background: #FDD835;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(255, 235, 59, 0.6);
+        }
+
+        #support-button:active {
+            transform: translateY(0);
+            box-shadow: 0 2px 10px rgba(255, 235, 59, 0.5);
+        }
+
+        #creator-credit {
+            position: fixed;
+            bottom: 0.5rem;
+            right: 0.5rem;
+            font-size: 0.7rem;
+            color: #666;
+            z-index: 1000;
+            opacity: 0.7;
+            transition: opacity 0.3s ease;
+        }
+
+        #creator-credit:hover {
+            opacity: 1;
+        }
+
+        #creator-credit a {
+            color: #888;
+            text-decoration: none;
+            transition: color 0.3s ease;
+        }
+
+        #creator-credit a:hover {
+            color: #aaa;
+        }
+
+        .phase-INHALE {
+            color: #00ffff;
+            text-shadow: 0 0 15px #00ffff;
+        }
+
+        .phase-HOLD {
+            color: #ffff00;
+            text-shadow: 0 0 15px #ffff00;
+        }
+
+        .phase-EXHALE {
+            color: #0088ff;
+            text-shadow: 0 0 15px #0088ff;
+        }
+
+        .bar-INHALE {
+            background: #00ffff;
+            box-shadow: 0 0 20px #00ffff;
+        }
+
+        .bar-HOLD {
+            background: #ffff00;
+            box-shadow: 0 0 20px #ffff00;
+        }
+
+        .bar-EXHALE {
+            background: #0088ff;
+            box-shadow: 0 0 20px #0088ff;
+        }
+
+        #error {
+            display: none;
+            color: #ff4444;
+            padding: 1rem;
+            text-align: center;
+            font-size: 1.2rem;
+        }
+    </style>
+</head>
+<body>
+    <div id="loading">Loading...</div>
+    <div id="error"></div>
+    
+    <!-- Support Button -->
+    <a id="support-button" href="https://buy.stripe.com/dRmdRadkE2lN58D7Tte7m01" target="_blank" rel="noopener noreferrer">
+        <span>☕</span>
+        <span>Support</span>
+    </a>
+
+    <!-- Creator Credit -->
+    <div id="creator-credit">
+        created by <a href="https://pinkswantrade.com" target="_blank" rel="noopener noreferrer">artem @ pinkswantrade.com</a>
+    </div>
+    
+    <div id="game-container">
+        <div id="title">BREATHING MEDITATION</div>
+        
+        <div id="canvas-wrapper">
+            <canvas id="maze-canvas"></canvas>
+        </div>
+
+        <div id="status-panel">
+            <div id="phase-display">INHALE</div>
+            
+            <div id="progress-bar-container">
+                <div id="progress-bar"></div>
+            </div>
+
+            <div id="time-remaining">4.0s remaining</div>
+
+            <div id="stats">
+                <span id="radius-stat">Radius: 5.0</span>
+                <span id="cycle-stat">Cycle: 1</span>
+            </div>
+
+            <div id="instructions">WASD or Arrow Keys to move</div>
+        </div>
+    </div>
+
+    <script>
+        class BreathingMeditationClient {
+            constructor() {
+                this.sessionId = null;
+                this.config = null;
+                this.canvas = document.getElementById('maze-canvas');
+                this.ctx = this.canvas.getContext('2d');
+                this.isMoving = false;
+                this.updateInterval = null;
+                this.viewportCells = { width: 60, height: 60 }; // Default, will be calculated
+                this.cameraOffset = { x: 0, y: 0 };
+            }
+
+            calculateViewportSize() {
+                // Calculate available space for canvas
+                const titleHeight = document.getElementById('title').offsetHeight;
+                const statusHeight = document.getElementById('status-panel').offsetHeight;
+                const gap = 32; // Approximate gap spacing
+                const padding = 32; // Body padding
+                
+                const availableHeight = window.innerHeight - titleHeight - statusHeight - gap - padding;
+                const availableWidth = window.innerWidth - padding;
+                
+                // Calculate how many cells fit in the viewport
+                const cellsWidth = Math.floor(availableWidth / this.config.CELL_SIZE);
+                const cellsHeight = Math.floor(availableHeight / this.config.CELL_SIZE);
+                
+                // Use smaller value and ensure it's reasonable (minimum 30, maximum 80)
+                const viewSize = Math.min(cellsWidth, cellsHeight);
+                this.viewportCells.width = Math.max(30, Math.min(80, viewSize));
+                this.viewportCells.height = Math.max(30, Math.min(80, viewSize));
+                
+                // Set canvas size
+                this.canvas.width = this.viewportCells.width * this.config.CELL_SIZE;
+                this.canvas.height = this.viewportCells.height * this.config.CELL_SIZE;
+            }
+
+            async init() {
+                try {
+                    // Create session
+                    const response = await fetch('/api/session/create', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' }
+                    });
+                    
+                    if (!response.ok) throw new Error('Failed to create session');
+                    
+                    const data = await response.json();
+                    this.sessionId = data.session_id;
+                    this.config = data.config;
+
+                    // Calculate and setup canvas based on viewport
+                    this.calculateViewportSize();
+
+                    // Setup keyboard controls
+                    this.setupControls();
+
+                    // Handle window resize
+                    window.addEventListener('resize', () => {
+                        this.calculateViewportSize();
+                    });
+
+                    // Start update loop
+                    this.startUpdateLoop();
+
+                    // Show game
+                    document.getElementById('loading').style.display = 'none';
+                    document.getElementById('game-container').style.display = 'flex';
+
+                } catch (error) {
+                    this.showError('Failed to initialize game: ' + error.message);
+                }
+            }
+
+            setupControls() {
+                const keyMap = {
+                    'w': 'up', 'W': 'up', 'ArrowUp': 'up',
+                    's': 'down', 'S': 'down', 'ArrowDown': 'down',
+                    'a': 'left', 'A': 'left', 'ArrowLeft': 'left',
+                    'd': 'right', 'D': 'right', 'ArrowRight': 'right'
+                };
+
+                document.addEventListener('keydown', async (e) => {
+                    const direction = keyMap[e.key];
+                    if (direction && !this.isMoving) {
+                        e.preventDefault();
+                        await this.movePlayer(direction);
+                    }
+                });
+            }
+
+            async movePlayer(direction) {
+                if (this.isMoving) return;
+                this.isMoving = true;
+
+                try {
+                    const response = await fetch(`/api/session/${this.sessionId}/move`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ direction })
+                    });
+
+                    if (response.ok) {
+                        // Immediately update to show movement
+                        await this.updateGameState();
+                    }
+                } catch (error) {
+                    console.error('Move failed:', error);
+                } finally {
+                    this.isMoving = false;
+                }
+            }
+
+            async updateGameState() {
+                try {
+                    const response = await fetch(`/api/session/${this.sessionId}/state`);
+                    if (!response.ok) throw new Error('Failed to get state');
+                    
+                    const state = await response.json();
+                    this.render(state);
+                    this.updateUI(state);
+                } catch (error) {
+                    console.error('Update failed:', error);
+                }
+            }
+
+            calculateCameraOffset(playerRow, playerCol) {
+                // Center camera on player
+                const centerRow = Math.floor(this.viewportCells.height / 2);
+                const centerCol = Math.floor(this.viewportCells.width / 2);
+                
+                this.cameraOffset.x = playerCol - centerCol;
+                this.cameraOffset.y = playerRow - centerRow;
+            }
+
+            render(state) {
+                const { visible_cells, player, breathing } = state;
+
+                // Calculate camera position
+                this.calculateCameraOffset(player.row, player.col);
+
+                // Clear canvas
+                this.ctx.fillStyle = '#000000';
+                this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+
+                // Set font
+                const fontSize = Math.floor(this.config.CELL_SIZE * 0.6);
+                this.ctx.font = `bold ${fontSize}px "Courier New", monospace`;
+                this.ctx.textAlign = 'center';
+                this.ctx.textBaseline = 'middle';
+
+                // Render visible cells that are in viewport
+                for (const cell of visible_cells) {
+                    // Convert world coordinates to screen coordinates
+                    const screenCol = cell.col - this.cameraOffset.x;
+                    const screenRow = cell.row - this.cameraOffset.y;
+                    
+                    // Skip if outside viewport
+                    if (screenCol < 0 || screenCol >= this.viewportCells.width ||
+                        screenRow < 0 || screenRow >= this.viewportCells.height) {
+                        continue;
+                    }
+                    
+                    const x = screenCol * this.config.CELL_SIZE;
+                    const y = screenRow * this.config.CELL_SIZE;
+
+                    if (cell.type === 'player') {
+                        // Render player with phase-based color
+                        const color = this.getPlayerColor(breathing.phase, breathing.phase_progress);
+                        this.ctx.fillStyle = color;
+                        this.ctx.fillText('@', 
+                            x + this.config.CELL_SIZE / 2, 
+                            y + this.config.CELL_SIZE / 2
+                        );
+                    } else if (cell.char !== ' ') {
+                        this.ctx.fillStyle = cell.color;
+                        this.ctx.fillText(cell.char,
+                            x + this.config.CELL_SIZE / 2,
+                            y + this.config.CELL_SIZE / 2
+                        );
+                    }
+                }
+            }
+
+            getPlayerColor(phase, progress) {
+                if (phase === 'INHALE') {
+                    const brightness = Math.floor(100 + 155 * progress);
+                    const hex = brightness.toString(16).padStart(2, '0');
+                    return `#${hex}${hex}ff`;
+                } else if (phase === 'HOLD') {
+                    return '#ffff00';
+                } else { // EXHALE
+                    const brightness = Math.floor(100 + 155 * (1.0 - progress));
+                    const hex = brightness.toString(16).padStart(2, '0');
+                    return `#0000${hex}`;
+                }
+            }
+
+            updateUI(state) {
+                const { breathing } = state;
+                const phase = breathing.phase;
+
+                // Update phase display
+                const phaseDisplay = document.getElementById('phase-display');
+                phaseDisplay.textContent = phase;
+                phaseDisplay.className = `phase-${phase}`;
+
+                // Update progress bar
+                const progressBar = document.getElementById('progress-bar');
+                const progress = (breathing.phase_time / breathing.phase_duration) * 100;
+                progressBar.style.width = `${progress}%`;
+                progressBar.className = `bar-${phase}`;
+
+                // Update time remaining
+                const timeRemaining = breathing.phase_duration - breathing.phase_time;
+                document.getElementById('time-remaining').textContent = 
+                    `${timeRemaining.toFixed(1)}s remaining`;
+
+                // Update stats
+                document.getElementById('radius-stat').textContent = 
+                    `Radius: ${breathing.current_radius.toFixed(1)}`;
+                document.getElementById('cycle-stat').textContent = 
+                    `Cycle: ${breathing.cycle_number}`;
+            }
+
+            startUpdateLoop() {
+                this.updateGameState();
+                this.updateInterval = setInterval(() => {
+                    this.updateGameState();
+                }, 1000 / 30); // 30 FPS
+            }
+
+            showError(message) {
+                document.getElementById('loading').style.display = 'none';
+                const errorDiv = document.getElementById('error');
+                errorDiv.textContent = message;
+                errorDiv.style.display = 'block';
+            }
+        }
+
+        // Initialize game when page loads
+        window.addEventListener('DOMContentLoaded', () => {
+            const game = new BreathingMeditationClient();
+            game.init();
+        });
+    </script>
+</body>
+</html>

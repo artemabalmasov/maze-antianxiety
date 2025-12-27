@@ -1,15 +1,5 @@
 https://gemini.google.com/app/f5f4cd5079c2472b
 
-Gemini
-
-Hi gemini, let's design anti anexiety game together. What would be top3 requirements for anit-anexiety game ?
-About GeminiOpens in a new window
-Gemini AppOpens in a new window
-SubscriptionsOpens in a new window
-For BusinessOpens in a new window
-Sign in to start saving your chats
-Once you're signed in, you can access your recent chats here.
-Conversation with Gemini
 Hi gemini, let's design anti anexiety game together. What would be top3 requirements for anit-anexiety game ?
 
 Hello! That sounds like a wonderful and helpful project. Designing a game specifically to address anxiety is a great idea.
@@ -57,3 +47,6 @@ Which of these three requirements—Calming Mechanisms, Cognitive Restructuring,
 
 Gemini can make mistakes, so double-check it
 
+follow up 
+https://gemini.google.com/app/bb9b274694f04791
+https://claude.ai/chat/1cd5590a-2fd7-43fb-8d25-7c0eaac0812c
