@@ -1,0 +1,11 @@
+# Robots.txt for Anti-Anxiety Breathing Meditation Maze
+
+User-agent: *
+Allow: /
+Disallow: /api/
+
+# Sitemap location
+Sitemap: https://maze.litgam.com/sitemap.xml
+
+# Crawl delay (be nice to our server)
+Crawl-delay: 1
